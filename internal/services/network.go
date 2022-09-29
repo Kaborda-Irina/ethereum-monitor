@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/params"
 	hdwallet "github.com/miguelmota/go-ethereum-hdwallet"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
@@ -40,7 +41,7 @@ func GetAddressFromDB() ([]models.DataFromDB, error) {
 	}
 	defer db.Close()
 
-	rows, _ := db.Query("SELECT id, address, counter FROM addresses")
+	rows, _ := db.Query("SELECT id, address,counter FROM addresses")
 	var dataFromDB models.DataFromDB
 	var allDataFromDB []models.DataFromDB
 	for rows.Next() {
@@ -52,7 +53,7 @@ func GetAddressFromDB() ([]models.DataFromDB, error) {
 }
 
 func CheckBlocks(ctx context.Context, client *ethclient.Client) {
-	//address := "0x4448ebCD6Bb6DB54cce8249c6CF021EB20D822B4"
+	//	address := "0x74F9Bb09cb4624E4016417A1ff60477Aa5DAFcf4"
 	allDataFromDB, err := GetAddressFromDB()
 	if err != nil {
 		log.Fatal("error getting data from db ", err)
@@ -77,24 +78,24 @@ func CheckBlocks(ctx context.Context, client *ethclient.Client) {
 				if latestScannedBlock != block.Number().Uint64() {
 					fmt.Printf("Amount of transactions in a block %d\n", len(block.Transactions()))
 					for _, tx := range block.Transactions() {
-						fmt.Printf("TX Hash: %s\n", tx.Hash().Hex())
+						//fmt.Printf("TX Hash: %s\n", tx.Hash().Hex())
 
 						msg, err := tx.AsMessage(types.LatestSignerForChainID(tx.ChainId()), nil)
 						if err != nil {
 							log.Printf("error while getting message %s", err)
 						}
-						fmt.Printf("TX from: %s\n", msg.From().Hex())
-						receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
-						if err != nil {
-							log.Fatal("receipt: ", err)
-						}
-						fmt.Printf("TX status: %d\n", receipt.Status)
-						fmt.Printf("TX to: %s\n", msg.To())
+						//	fmt.Printf("TX from: %s\n", msg.From().Hex())
+						//	receipt, err := client.TransactionReceipt(context.Background(), tx.Hash())
+						//	if err != nil {
+						//		log.Fatal("receipt: ", err)
+						//	}
+						//	fmt.Printf("TX status: %d\n", receipt.Status)
+						//	fmt.Printf("TX to: %s\n", msg.To())
 
 						for _, data := range allDataFromDB {
 							go func(address string) {
-								if msg.From().Hex() == address || (msg.To() != nil && msg.To().String() == address) {
-									fmt.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!  Address %s gets a tokens : %s", address, tx.Value().String())
+								if msg.To() != nil && msg.To().String() == address {
+									fmt.Printf("!!!!!!!!!!!!!!!!!!!!!!!!!  Address %s gets a tokens : %s\n", address, tx.Value().String())
 									log.Fatal("completed")
 								}
 							}(data.Address)
@@ -115,7 +116,7 @@ func CheckBlocks(ctx context.Context, client *ethclient.Client) {
 }
 
 func GetBlocks(ctx context.Context, client *ethclient.Client) (*types.Block, error) {
-	currentBlock, err := client.BlockByNumber(ctx, big.NewInt(13049312))
+	currentBlock, err := client.BlockByNumber(ctx, nil) //big.NewInt(13055870)
 	if err != nil {
 		log.Println("error while getting current block ", err)
 	}
@@ -135,18 +136,17 @@ func GetBalance(ctx context.Context, client *ethclient.Client, address string) (
 	return balance, nil
 }
 
-func TransferringETH(client *ethclient.Client /*, privateKey *ecdsa.PrivateKey*/) {
-	value := big.NewInt(100000000) // in wei (1 eth)
-	gasLimit := uint64(21000)      // in units
-	//gasPrice := big.NewInt(30000000000)     // in wei (30 gwei)
-	gasPrice, err := client.SuggestGasPrice(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
+func TransferringETH(client *ethclient.Client, privKey string) string {
+	value := big.NewInt(100000000)      // in wei (1 eth)
+	gasLimit := uint64(300000)          // in units
+	gasPrice := big.NewInt(30000000000) // in wei (30 gwei)
+	//gasPrice, err := client.SuggestGasPrice(context.Background())
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
 
-	toAddress := common.HexToAddress("0x8c2f16fCB4aD9072D61B543ab010462e1581E778")
-
-	privateKey, err := crypto.HexToECDSA("4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d")
+	toAddress := common.HexToAddress("0x7719F07130BDA77611028Ca13CA183DD0E82Ec40")
+	privateKey, err := crypto.HexToECDSA(privKey)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -179,8 +179,78 @@ func TransferringETH(client *ethclient.Client /*, privateKey *ecdsa.PrivateKey*/
 		log.Fatal("SendTransaction: ", err)
 	}
 
-	fmt.Printf("tx sent: %s", signedTx.Hash().Hex())
+	return signedTx.Hash().Hex()
 }
+
+func GenerateDeriveAddress(count int) (string, string) {
+	mnemonic, err := mnemonicFun()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	path := "m/44'/60'/0'/0/" + strconv.Itoa(count)
+	derivPath, err := accounts.ParseDerivationPath(path)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
+	seed := bip39.NewSeed(*mnemonic, "")
+
+	// Generate a new master node using the seed.
+	masterKey, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	key := masterKey
+	// child extended keys
+	for _, n := range derivPath {
+		key, err = key.Derive(n)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	privateKey, err := key.ECPrivKey()
+	privateKeyECDSA := privateKey.ToECDSA()
+	if err != nil {
+		log.Fatal(err)
+	}
+	privateKeyBytes := crypto.FromECDSA(privateKeyECDSA)
+	privateKeyOutput := fmt.Sprint(hexutil.Encode(privateKeyBytes)[2:])
+
+	publicKey := privateKeyECDSA.Public()
+	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+	if !ok {
+		log.Fatal(err)
+	}
+
+	address := crypto.PubkeyToAddress(*publicKeyECDSA).Hex()
+
+	return address, privateKeyOutput
+}
+
+func mnemonicFun() (*string, error) {
+	// Generate a mnemonic for memorization or user-friendly seeds
+	entropy, err := bip39.NewEntropy(128)
+	if err != nil {
+		return nil, err
+	}
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return nil, err
+	}
+	return &mnemonic, nil
+}
+
+func IsValidAddress(v string) bool {
+	re := regexp.MustCompile("^0x[0-9a-fA-F]{40}$")
+	return re.MatchString(v)
+}
+
+func WeiToEther(wei *big.Int) *big.Float {
+	return new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.Ether))
+}
+
 func legacyTx() *types.Transaction {
 	nonce, err := hexutil.DecodeUint64("0x1216")
 	if err != nil {
@@ -228,7 +298,8 @@ func legacyTx() *types.Transaction {
 	fmt.Println("LegacyTx actual hash       =>", newLegacyTx.Hash().String())
 	return newLegacyTx
 }
-func GenerateAddress() string {
+
+func GenerateAddress3() string {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		log.Fatal(err)
@@ -253,7 +324,7 @@ func GenerateAddress() string {
 	return fmt.Sprintln(hexutil.Encode(hash.Sum(nil)[12:]))
 }
 
-func GenerateDeriveAddress() string {
+func GenerateDeriveAddress2() string {
 	mnemonic := "tag volcano eight thank tide danger coast health above argue embrace heavy"
 	wallet, err := hdwallet.NewFromMnemonic(mnemonic)
 	if err != nil {
@@ -267,75 +338,4 @@ func GenerateDeriveAddress() string {
 	}
 
 	return fmt.Sprintln(account.Address.Hex())
-}
-
-func GenerateDeriveAddress2(count int) (string, *ecdsa.PrivateKey) {
-	mnemonic, err := mnemonicFun()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	path := "m/44'/60'/0'/0/" + strconv.Itoa(count)
-	derivPath, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
-	seed := bip39.NewSeed(*mnemonic, "")
-
-	// Generate a new master node using the seed.
-	masterKey, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	key := masterKey
-	// child extended keys
-	for _, n := range derivPath {
-		key, err = key.Derive(n)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	privateKey, err := key.ECPrivKey()
-	privateKeyECDSA := privateKey.ToECDSA()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	publicKey := privateKeyECDSA.Public()
-	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-	if !ok {
-		log.Fatal(err)
-	}
-
-	//publicKeyBytes := crypto.FromECDSAPub(publicKeyECDSA)
-	//fmt.Println(hexutil.Encode(publicKeyBytes)[4:]) //  This is the public key
-
-	address := crypto.PubkeyToAddress(*publicKeyECDSA).Hex()
-
-	//or
-	//hash := sha3.NewLegacyKeccak256()
-	//hash.Write(publicKeyBytes[1:])
-	//fmt.Sprintln(hexutil.Encode(hash.Sum(nil)[12:]))
-
-	return address, privateKeyECDSA
-}
-
-func mnemonicFun() (*string, error) {
-	// Generate a mnemonic for memorization or user-friendly seeds
-	entropy, err := bip39.NewEntropy(128)
-	if err != nil {
-		return nil, err
-	}
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		return nil, err
-	}
-	return &mnemonic, nil
-}
-
-func IsValidAddress(v string) bool {
-	re := regexp.MustCompile("^0x[0-9a-fA-F]{40}$")
-	return re.MatchString(v)
 }

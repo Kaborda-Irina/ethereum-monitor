@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"ethereum-monitor/database"
 	"ethereum-monitor/internal/handlers"
 	"ethereum-monitor/internal/server"
 	"ethereum-monitor/internal/services"
+	"ethereum-monitor/vault"
 	"log"
 )
 
@@ -14,9 +16,13 @@ func main() {
 	if err != nil {
 		log.Fatal("error creating a client", err)
 	}
-	var accountIndex int
+
+	// Start Vault
+	dataVault := vault.InitVault()
+
 	ctx := context.Background()
-	dataHandler := handlers.NewHandler(ctx, client, accountIndex)
+	accountIndex := counter()
+	dataHandler := handlers.NewHandler(ctx, client, accountIndex, dataVault)
 
 	// Check wallets in network
 	services.CheckBlocks(ctx, client)
@@ -24,15 +30,19 @@ func main() {
 	// Start server
 	server.InitServer(dataHandler)
 
-	//address, countfrom := services.GenerateDeriveAddress2(accountIndex)
-	//fmt.Printf("new address %s coun %d\n", address, countfrom)
+}
 
-	//nonce, countfrom, privateKey := services.GenerateDeriveAddress3(client, count)
-	//count = countfrom
-	//fmt.Println("nonce ", nonce, " count ", count, "privateKey ", privateKey)
-	//ctx := context.Background()
-	//services.GetBalance(client, ctx)
-	//handlers.AddCoins()
-
-	//services.TransferringETH(client)
+func counter() int {
+	db, err := database.ConnectionToDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+	var count int
+	err = db.QueryRow("SELECT max(counter) FROM addresses").Scan(&count)
+	if err != nil {
+		count = 0
+		log.Println(err)
+	}
+	return count
 }

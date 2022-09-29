@@ -12,21 +12,24 @@ func ConnectionToDB() (*sql.DB, error) {
 		log.Printf("error while getting connection to db")
 		return nil, err
 	}
-	statement, err := db.Prepare("CREATE TABLE IF NOT EXISTS addresses (id INTEGER PRIMARY KEY, address TEXT, privateKeys TEXT, counter INTEGER)")
+	statement, err := db.Prepare("CREATE TABLE IF NOT EXISTS addresses (id INTEGER PRIMARY KEY, address TEXT, counter INTEGER)")
 	if err != nil {
 		log.Printf("error while creating table to db")
 		return nil, err
 	}
 	statement.Exec()
-	//statement, _ = database.Prepare("INSERT INTO addresses (addres, counter) VALUES (?, ?)")
-	//statement.Exec("iriba", "1")
-	//rows, _ := database.Query("SELECT id, firstname, lastname FROM people")
-	//var id int
-	//var firstname string
-	//var lastname string
-	//for rows.Next() {
-	//	rows.Scan(&id, &firstname, &lastname)
-	//	fmt.Println(strconv.Itoa(id) + ": " + firstname + " " + lastname)
-	//}
+
 	return db, nil
+}
+
+func DeleteRowInDB() {
+	db, err := sql.Open("sqlite3", "./database/address2.db")
+	if err != nil {
+		log.Printf("error while getting connection to db")
+	}
+	statement, err := db.Prepare("DELETE FROM addresses2 where id = 10")
+	if err != nil {
+		log.Fatal(err)
+	}
+	statement.Exec("DELETE FROM addresses2 where id = 10")
 }
